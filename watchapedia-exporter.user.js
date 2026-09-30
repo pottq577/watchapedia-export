@@ -3,6 +3,7 @@
 // @namespace    watchapedia-ratings-exporter
 // @version      0.1.0
 // @description  왓챠피디아 영화·시리즈 평가를 CSV로 백업하고 기존 백업을 증분 갱신합니다.
+// @match        https://pedia.watcha.com/ko
 // @match        https://pedia.watcha.com/ko/*
 // @license      MIT
 // @run-at       document-idle
