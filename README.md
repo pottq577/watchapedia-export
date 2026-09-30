@@ -1,6 +1,8 @@
 # WatchaPedia Ratings Exporter
 
-[왓챠피디아](https://pedia.watcha.com/ko)에서 내가 평가한 **영화·시리즈 기록을 CSV로 백업하고, 이후 변경분만 반영해 갱신**하는 비공식 Tampermonkey userscript입니다.
+[왓챠피디아](https://pedia.watcha.com/ko)에서 내가 평가한 **영화·시리즈 기록을 CSV로 백업는 도구**입니다.
+<br/>
+Tampermonkey userscript로 실행하며, 최초 전체 백업과 이후 변경된 평가만 반영하는 증분 업데이트를 지원합니다.
 
 Chrome 환경에서의 사용을 기준으로 안내합니다.
 
