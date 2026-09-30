@@ -1,13 +1,13 @@
 // ==UserScript==
 // @name         WatchaPedia Ratings Exporter
 // @namespace    watchapedia-ratings-exporter
-// @version      0.3.0
+// @version      0.4.0
 // @description  왓챠피디아 영화·시리즈 평가를 CSV로 백업하고 기존 백업을 증분 갱신합니다.
 // @match        https://pedia.watcha.com/ko
 // @match        https://pedia.watcha.com/ko/*
 // @updateURL    https://raw.githubusercontent.com/pottq577/watchapedia-export/main/watchapedia-exporter.user.js
 // @downloadURL  https://raw.githubusercontent.com/pottq577/watchapedia-export/main/watchapedia-exporter.user.js
-// @license      MIT
+// @license      PolyForm-Noncommercial-1.0.0
 // @run-at       document-idle
 // @grant        none
 // ==/UserScript==
@@ -17,11 +17,11 @@
   "use strict";
 
   const __modules = {
-    "browser/files": function(module, exports, require) {
+    "browser/files": function (module, exports, require) {
       "use strict";
-      
+
       const { buildCsv } = require("../core/csv");
-      
+
       function selectCsvFile(documentRef = document) {
         return new Promise((resolve, reject) => {
           const input = documentRef.createElement("input");
@@ -42,14 +42,14 @@
           input.click();
         });
       }
-      
+
       function localDateString(now = new Date()) {
         const year = now.getFullYear();
         const month = String(now.getMonth() + 1).padStart(2, "0");
         const day = String(now.getDate()).padStart(2, "0");
         return `${year}-${month}-${day}`;
       }
-      
+
       function downloadCsv(rows, columns, env = globalThis) {
         const documentRef = env.document;
         const blob = new env.Blob(["\uFEFF", buildCsv(rows, columns)], {
@@ -64,19 +64,23 @@
         anchor.remove();
         env.setTimeout(() => env.URL.revokeObjectURL(url), 1_000);
       }
-      
+
       module.exports = { selectCsvFile, localDateString, downloadCsv };
     },
-    "browser/metadata": function(module, exports, require) {
+    "browser/metadata": function (module, exports, require) {
       "use strict";
-      
+
       function normalizeText(value) {
-        return String(value ?? "").replace(/\s+/g, " ").trim();
+        return String(value ?? "")
+          .replace(/\s+/g, " ")
+          .trim();
       }
-      
+
       function extractGenresFromJsonLd(doc, title) {
         const objects = [];
-        for (const script of doc.querySelectorAll('script[type="application/ld+json"]')) {
+        for (const script of doc.querySelectorAll(
+          'script[type="application/ld+json"]',
+        )) {
           try {
             const parsed = JSON.parse(script.textContent ?? "null");
             const add = (value) => {
@@ -94,7 +98,7 @@
             // 관련 없는 JSON-LD 블록은 무시합니다.
           }
         }
-      
+
         const normalizedTitle = normalizeText(title);
         const contentObject =
           objects.find(
@@ -106,24 +110,32 @@
           objects.find(
             (object) => object?.["@type"] !== "Organization" && object?.genre,
           );
-      
+
         const genre = contentObject?.genre;
-        if (Array.isArray(genre)) return genre.map(normalizeText).filter(Boolean);
+        if (Array.isArray(genre))
+          return genre.map(normalizeText).filter(Boolean);
         return genre ? [normalizeText(genre)].filter(Boolean) : [];
       }
-      
+
       function looksLikeCountry(value) {
         if (!value || value.length > 50) return false;
-        return !/시간|분|관람|청불|개봉|예매|방영|에피소드|평균|평가/.test(value);
+        return !/시간|분|관람|청불|개봉|예매|방영|에피소드|평균|평가/.test(
+          value,
+        );
       }
-      
+
       function extractCountryFromRenderedHtml(doc, row, genres) {
         const year = String(row.year ?? "").slice(0, 4);
         const candidates = [...doc.querySelectorAll("div, span, p")]
-          .map((element) => ({ element, text: normalizeText(element.textContent) }))
-          .filter(({ text }) => text && text.length <= 140 && text.includes("·"))
+          .map((element) => ({
+            element,
+            text: normalizeText(element.textContent),
+          }))
+          .filter(
+            ({ text }) => text && text.length <= 140 && text.includes("·"),
+          )
           .filter(({ text }) => !year || text.startsWith(year));
-      
+
         let metadata = null;
         if (genres.length) {
           metadata = candidates.find(({ text }) =>
@@ -132,33 +144,45 @@
         }
         metadata ??= candidates[0] ?? null;
         if (!metadata) return [];
-      
+
         const parts = metadata.text
           .split("·")
           .map((part) => part.trim())
           .filter(Boolean);
         const genreIndex = genres.length
-          ? parts.findIndex((part) => genres.some((genre) => part.includes(genre)))
+          ? parts.findIndex((part) =>
+              genres.some((genre) => part.includes(genre)),
+            )
           : -1;
-      
+
         if (genreIndex >= 0) {
           const inlineCountry = parts[genreIndex + 1];
           if (looksLikeCountry(inlineCountry)) {
-            return inlineCountry.split(/[\/,]/).map((value) => value.trim()).filter(Boolean);
+            return inlineCountry
+              .split(/[\/,]/)
+              .map((value) => value.trim())
+              .filter(Boolean);
           }
         }
-      
+
         let sibling = metadata.element.nextElementSibling;
-        for (let index = 0; sibling && index < 3; index += 1, sibling = sibling.nextElementSibling) {
+        for (
+          let index = 0;
+          sibling && index < 3;
+          index += 1, sibling = sibling.nextElementSibling
+        ) {
           const candidate = normalizeText(sibling.textContent);
           if (!candidate || candidate.includes("·")) continue;
           if (looksLikeCountry(candidate)) {
-            return candidate.split(/[\/,]/).map((value) => value.trim()).filter(Boolean);
+            return candidate
+              .split(/[\/,]/)
+              .map((value) => value.trim())
+              .filter(Boolean);
           }
         }
         return [];
       }
-      
+
       function parseDetailMetadata(html, row, env = globalThis) {
         const Parser = env.DOMParser;
         if (!Parser) throw new Error("DOMParser를 사용할 수 없습니다.");
@@ -170,7 +194,7 @@
           countries: [...new Set(countries)].join("|"),
         };
       }
-      
+
       async function enrichRows({
         rows,
         client,
@@ -188,7 +212,7 @@
         const failedRows = [];
         let completed = 0;
         let metadataWarnings = 0;
-      
+
         for (let index = 0; index < targets.length; index += 1) {
           const row = targets[index];
           ui.setStatus(
@@ -202,7 +226,11 @@
             if (persistProgress) await storage.saveProgress(row, "complete");
             completed += 1;
           } catch (error) {
-            failedRows.push({ content_code: row.content_code, title: row.title, error });
+            failedRows.push({
+              content_code: row.content_code,
+              title: row.title,
+              error,
+            });
             if (persistProgress) {
               await storage.saveProgress(
                 row,
@@ -210,10 +238,13 @@
                 error instanceof Error ? error.message : String(error),
               );
             }
-            logger.error(`[WatchaPedia Exporter] detail failed: ${row.title}`, error);
+            logger.error(
+              `[WatchaPedia Exporter] detail failed: ${row.title}`,
+              error,
+            );
           }
         }
-      
+
         return {
           attempted: targets.length,
           completed,
@@ -221,7 +252,7 @@
           failedRows,
         };
       }
-      
+
       module.exports = {
         normalizeText,
         looksLikeCountry,
@@ -229,19 +260,19 @@
         enrichRows,
       };
     },
-    "browser/storage": function(module, exports, require) {
+    "browser/storage": function (module, exports, require) {
       "use strict";
-      
+
       const { progressMap } = require("../core/checkpoint");
-      
+
       function createCheckpointStorage(config, env = globalThis) {
         const indexedDBRef = env.indexedDB;
         const IDBKeyRangeRef = env.IDBKeyRange;
-      
+
         if (!indexedDBRef || !IDBKeyRangeRef) {
           throw new Error("이 브라우저에서는 IndexedDB를 사용할 수 없습니다.");
         }
-      
+
         function openDb() {
           return new Promise((resolve, reject) => {
             const request = indexedDBRef.open(
@@ -251,12 +282,19 @@
             request.addEventListener("upgradeneeded", () => {
               const db = request.result;
               if (!db.objectStoreNames.contains(config.CHECKPOINT_RUN_STORE)) {
-                db.createObjectStore(config.CHECKPOINT_RUN_STORE, { keyPath: "id" });
-              }
-              if (!db.objectStoreNames.contains(config.CHECKPOINT_PROGRESS_STORE)) {
-                const store = db.createObjectStore(config.CHECKPOINT_PROGRESS_STORE, {
-                  keyPath: ["run_id", "content_code"],
+                db.createObjectStore(config.CHECKPOINT_RUN_STORE, {
+                  keyPath: "id",
                 });
+              }
+              if (
+                !db.objectStoreNames.contains(config.CHECKPOINT_PROGRESS_STORE)
+              ) {
+                const store = db.createObjectStore(
+                  config.CHECKPOINT_PROGRESS_STORE,
+                  {
+                    keyPath: ["run_id", "content_code"],
+                  },
+                );
                 store.createIndex("run_id", "run_id", { unique: false });
               }
             });
@@ -266,32 +304,43 @@
             );
           });
         }
-      
+
         function waitForTransaction(transaction) {
           return new Promise((resolve, reject) => {
             transaction.addEventListener("complete", () => resolve());
             transaction.addEventListener("abort", () =>
-              reject(transaction.error ?? new Error("IndexedDB 작업이 중단되었습니다.")),
+              reject(
+                transaction.error ??
+                  new Error("IndexedDB 작업이 중단되었습니다."),
+              ),
             );
             transaction.addEventListener("error", () =>
-              reject(transaction.error ?? new Error("IndexedDB 작업에 실패했습니다.")),
+              reject(
+                transaction.error ??
+                  new Error("IndexedDB 작업에 실패했습니다."),
+              ),
             );
           });
         }
-      
+
         function requestValue(request) {
           return new Promise((resolve, reject) => {
             request.addEventListener("success", () => resolve(request.result));
             request.addEventListener("error", () =>
-              reject(request.error ?? new Error("IndexedDB 요청에 실패했습니다.")),
+              reject(
+                request.error ?? new Error("IndexedDB 요청에 실패했습니다."),
+              ),
             );
           });
         }
-      
+
         async function loadRun() {
           const db = await openDb();
           try {
-            const transaction = db.transaction(config.CHECKPOINT_RUN_STORE, "readonly");
+            const transaction = db.transaction(
+              config.CHECKPOINT_RUN_STORE,
+              "readonly",
+            );
             const request = transaction
               .objectStore(config.CHECKPOINT_RUN_STORE)
               .get(config.CHECKPOINT_ID);
@@ -300,11 +349,14 @@
             db.close();
           }
         }
-      
+
         async function saveRun(run) {
           const db = await openDb();
           try {
-            const transaction = db.transaction(config.CHECKPOINT_RUN_STORE, "readwrite");
+            const transaction = db.transaction(
+              config.CHECKPOINT_RUN_STORE,
+              "readwrite",
+            );
             run.updated_at = new Date().toISOString();
             transaction.objectStore(config.CHECKPOINT_RUN_STORE).put(run);
             await waitForTransaction(transaction);
@@ -312,7 +364,7 @@
             db.close();
           }
         }
-      
+
         async function saveProgress(row, status = "complete", error = "") {
           const db = await openDb();
           try {
@@ -334,7 +386,7 @@
             db.close();
           }
         }
-      
+
         async function loadProgress() {
           const db = await openDb();
           try {
@@ -351,7 +403,7 @@
             db.close();
           }
         }
-      
+
         async function clear() {
           const db = await openDb();
           try {
@@ -362,7 +414,7 @@
             transaction
               .objectStore(config.CHECKPOINT_RUN_STORE)
               .delete(config.CHECKPOINT_ID);
-      
+
             const cursorRequest = transaction
               .objectStore(config.CHECKPOINT_PROGRESS_STORE)
               .index("run_id")
@@ -378,40 +430,47 @@
             db.close();
           }
         }
-      
+
         async function hydrateRows(run) {
           const rows = (run.current_rows ?? []).map((row) => ({ ...row }));
           const progress = await loadProgress();
           const byCode = progressMap(progress);
-      
+
           for (const row of rows) {
             const saved = byCode.get(row.content_code);
             if (!saved || saved.status !== "complete") continue;
             row.genres = saved.genres ?? row.genres ?? "";
             row.countries = saved.countries ?? row.countries ?? "";
           }
-      
+
           return { rows, progressByCode: byCode };
         }
-      
-        return { loadRun, saveRun, saveProgress, loadProgress, clear, hydrateRows };
+
+        return {
+          loadRun,
+          saveRun,
+          saveProgress,
+          loadProgress,
+          clear,
+          hydrateRows,
+        };
       }
-      
+
       module.exports = { createCheckpointStorage };
     },
-    "browser/watchapedia": function(module, exports, require) {
+    "browser/watchapedia": function (module, exports, require) {
       "use strict";
-      
+
       const {
         extractUserCodeFromMeResponse,
         extractUserCodeFromInitialData,
         extractUserCodeFromScriptTexts,
       } = require("../core/identity");
-      
+
       function sleep(ms) {
         return new Promise((resolve) => setTimeout(resolve, ms));
       }
-      
+
       function getCookie(documentRef, name) {
         return (
           documentRef.cookie
@@ -422,15 +481,17 @@
             .join("=") ?? ""
         );
       }
-      
+
       function getDeviceId(windowRef, documentRef) {
         const cookieValue = getCookie(documentRef, "_c_pdi");
         if (cookieValue) return decodeURIComponent(cookieValue);
         return (
-          windowRef.__INITIAL_DATA__?.headers?.["x-frograms-device-identifier"] ?? ""
+          windowRef.__INITIAL_DATA__?.headers?.[
+            "x-frograms-device-identifier"
+          ] ?? ""
         );
       }
-      
+
       function createApiHeaders(deviceId) {
         return {
           accept: "application/vnd.frograms+json;version=2.1.0",
@@ -443,13 +504,13 @@
           "x-frograms-galaxy-region": "KR",
         };
       }
-      
+
       function createWatchaClient({ config, ui, env = globalThis }) {
         const windowRef = env.window ?? env;
         const documentRef = env.document;
         const fetchImpl = env.fetch.bind(env);
         let headers = null;
-      
+
         function prepare() {
           const deviceId = getDeviceId(windowRef, documentRef);
           if (!deviceId) {
@@ -459,7 +520,7 @@
           }
           headers = createApiHeaders(deviceId);
         }
-      
+
         async function requestJson(url, attempt = 0) {
           await sleep(config.API_DELAY_MS);
           const response = await fetchImpl(url, {
@@ -467,19 +528,21 @@
             credentials: "same-origin",
             headers,
           });
-      
+
           if (response.ok) return response.json();
-      
+
           if (
             (response.status === 429 || response.status >= 500) &&
             attempt < config.RETRY_LIMIT
           ) {
             const delay = 2_000 * 2 ** attempt;
-            ui.setStatus(`요청 제한/서버 오류 (${response.status}). 잠시 후 재시도합니다.`);
+            ui.setStatus(
+              `요청 제한/서버 오류 (${response.status}). 잠시 후 재시도합니다.`,
+            );
             await sleep(delay);
             return requestJson(url, attempt + 1);
           }
-      
+
           const body = await response.text();
           console.error("WatchaPedia API request failed", {
             status: response.status,
@@ -493,7 +556,7 @@
           }
           throw new Error(`${response.status} ${response.statusText}: ${url}`);
         }
-      
+
         async function requestHtml(contentCode, attempt = 0) {
           await sleep(config.DETAIL_DELAY_MS);
           const url = `/ko/contents/${encodeURIComponent(contentCode)}`;
@@ -502,24 +565,30 @@
             credentials: "same-origin",
             headers: { accept: "text/html,application/xhtml+xml" },
           });
-      
+
           if (response.ok) return response.text();
-      
+
           if (
             (response.status === 429 || response.status >= 500) &&
             attempt < config.RETRY_LIMIT
           ) {
             const delay = 3_000 * 2 ** attempt;
-            ui.setStatus(`상세 정보 요청 실패 (${response.status}). 잠시 후 재시도합니다.`);
+            ui.setStatus(
+              `상세 정보 요청 실패 (${response.status}). 잠시 후 재시도합니다.`,
+            );
             await sleep(delay);
             return requestHtml(contentCode, attempt + 1);
           }
-          throw new Error(`상세 페이지 요청 실패 (${response.status}): ${contentCode}`);
+          throw new Error(
+            `상세 페이지 요청 실패 (${response.status}): ${contentCode}`,
+          );
         }
-      
+
         async function getCurrentUserCode() {
           try {
-            const code = extractUserCodeFromMeResponse(await requestJson("/api/users/me"));
+            const code = extractUserCodeFromMeResponse(
+              await requestJson("/api/users/me"),
+            );
             if (code) return code;
           } catch (error) {
             console.warn(
@@ -527,28 +596,30 @@
               error,
             );
           }
-      
-          const initialDataCode = extractUserCodeFromInitialData(windowRef.__INITIAL_DATA__);
+
+          const initialDataCode = extractUserCodeFromInitialData(
+            windowRef.__INITIAL_DATA__,
+          );
           if (initialDataCode) return initialDataCode;
-      
+
           const scriptCode = extractUserCodeFromScriptTexts(
             [...documentRef.scripts].map((script) => script.textContent ?? ""),
           );
           if (scriptCode) return scriptCode;
-      
+
           throw new Error(
             "현재 로그인 사용자를 안전하게 식별하지 못했습니다. 임의의 프로필 링크는 사용하지 않습니다.",
           );
         }
-      
+
         return { prepare, requestJson, requestHtml, getCurrentUserCode };
       }
-      
+
       module.exports = { createWatchaClient, getDeviceId, createApiHeaders };
     },
-    "config": function(module, exports, require) {
+    config: function (module, exports, require) {
       "use strict";
-      
+
       module.exports = {
         API_DELAY_MS: 300,
         DETAIL_DELAY_MS: 800,
@@ -570,12 +641,16 @@
         ],
       };
     },
-    "core/checkpoint": function(module, exports, require) {
+    "core/checkpoint": function (module, exports, require) {
       "use strict";
-      
+
       function validateCheckpointRun(run, supportedSchemaVersion) {
         if (!run || typeof run !== "object") {
-          return { ok: false, code: "invalid", reason: "체크포인트 데이터가 없습니다." };
+          return {
+            ok: false,
+            code: "invalid",
+            reason: "체크포인트 데이터가 없습니다.",
+          };
         }
         if (run.schema_version !== supportedSchemaVersion) {
           return {
@@ -584,46 +659,68 @@
             reason: `지원하지 않는 체크포인트 형식입니다. 저장 형식 ${run.schema_version ?? "unknown"}, 현재 ${supportedSchemaVersion}`,
           };
         }
-        if (!(["initial", "update"].includes(run.mode))) {
-          return { ok: false, code: "invalid_mode", reason: "알 수 없는 작업 유형입니다." };
+        if (!["initial", "update"].includes(run.mode)) {
+          return {
+            ok: false,
+            code: "invalid_mode",
+            reason: "알 수 없는 작업 유형입니다.",
+          };
         }
-        if (!(["ratings", "details"].includes(run.phase))) {
-          return { ok: false, code: "invalid_phase", reason: "알 수 없는 수집 단계입니다." };
+        if (!["ratings", "details"].includes(run.phase)) {
+          return {
+            ok: false,
+            code: "invalid_phase",
+            reason: "알 수 없는 수집 단계입니다.",
+          };
         }
         if (typeof run.user_code !== "string" || !run.user_code) {
-          return { ok: false, code: "invalid_user", reason: "사용자 코드가 없습니다." };
+          return {
+            ok: false,
+            code: "invalid_user",
+            reason: "사용자 코드가 없습니다.",
+          };
         }
         if (!Array.isArray(run.current_rows)) {
-          return { ok: false, code: "invalid_rows", reason: "수집 행 데이터가 올바르지 않습니다." };
+          return {
+            ok: false,
+            code: "invalid_rows",
+            reason: "수집 행 데이터가 올바르지 않습니다.",
+          };
         }
         if (run.phase === "ratings") {
           const state = run.ratings_state;
-          if (!state || !(["movies", "tv_seasons"].includes(state.stage))) {
-            return { ok: false, code: "invalid_ratings_state", reason: "평가 수집 상태가 올바르지 않습니다." };
+          if (!state || !["movies", "tv_seasons"].includes(state.stage)) {
+            return {
+              ok: false,
+              code: "invalid_ratings_state",
+              reason: "평가 수집 상태가 올바르지 않습니다.",
+            };
           }
         }
         return { ok: true, code: "ok", reason: "" };
       }
-      
+
       function progressMap(progressRows) {
-        return new Map((progressRows ?? []).map((item) => [item.content_code, item]));
+        return new Map(
+          (progressRows ?? []).map((item) => [item.content_code, item]),
+        );
       }
-      
+
       module.exports = { validateCheckpointRun, progressMap };
     },
-    "core/csv": function(module, exports, require) {
+    "core/csv": function (module, exports, require) {
       "use strict";
-      
+
       function parseCsv(text) {
         const source = String(text ?? "").replace(/^\uFEFF/, "");
         const table = [];
         let row = [];
         let value = "";
         let quoted = false;
-      
+
         for (let index = 0; index < source.length; index += 1) {
           const char = source[index];
-      
+
           if (quoted) {
             if (char === '"') {
               if (source[index + 1] === '"') {
@@ -637,7 +734,7 @@
             }
             continue;
           }
-      
+
           if (char === '"') {
             quoted = true;
           } else if (char === ",") {
@@ -652,26 +749,28 @@
             value += char;
           }
         }
-      
+
         if (quoted) {
           throw new Error("CSV의 따옴표가 닫히지 않았습니다.");
         }
-      
+
         if (value.length || row.length) {
           row.push(value);
           table.push(row);
         }
-      
+
         if (!table.length) return [];
-      
+
         const headers = table[0].map((header) => header.trim());
-        const missing = ["content_code"].filter((header) => !headers.includes(header));
+        const missing = ["content_code"].filter(
+          (header) => !headers.includes(header),
+        );
         if (missing.length) {
           throw new Error(
             `지원하지 않는 CSV입니다. 필수 컬럼 누락: ${missing.join(", ")}`,
           );
         }
-      
+
         return table
           .slice(1)
           .filter((values) => values.some((item) => item !== ""))
@@ -681,11 +780,11 @@
             ),
           );
       }
-      
+
       function csvEscape(value) {
         return `"${String(value ?? "").replaceAll('"', '""')}"`;
       }
-      
+
       function buildCsv(rows, columns) {
         return [
           columns.join(","),
@@ -694,26 +793,27 @@
           ),
         ].join("\r\n");
       }
-      
+
       module.exports = { parseCsv, csvEscape, buildCsv };
     },
-    "core/identity": function(module, exports, require) {
+    "core/identity": function (module, exports, require) {
       "use strict";
-      
+
       function extractUserCodeFromMeResponse(json) {
         const code = json?.result?.code ?? json?.code ?? "";
         return typeof code === "string" ? code.trim() : "";
       }
-      
+
       function collectExplicitUserCodes(value, output, seen) {
         if (!value || typeof value !== "object" || seen.has(value)) return;
         seen.add(value);
-      
+
         if (Array.isArray(value)) {
-          for (const item of value) collectExplicitUserCodes(item, output, seen);
+          for (const item of value)
+            collectExplicitUserCodes(item, output, seen);
           return;
         }
-      
+
         for (const [key, nested] of Object.entries(value)) {
           if (
             (key === "userCode" || key === "user_code") &&
@@ -727,33 +827,35 @@
           }
         }
       }
-      
+
       function extractUserCodeFromInitialData(initialData) {
         if (!initialData || typeof initialData !== "object") return "";
-      
+
         const directCandidates = [
           initialData.currentUser?.code,
           initialData.current_user?.code,
           initialData.me?.code,
         ].filter((value) => typeof value === "string" && value.trim());
-      
+
         if (directCandidates.length) {
-          const unique = [...new Set(directCandidates.map((value) => value.trim()))];
+          const unique = [
+            ...new Set(directCandidates.map((value) => value.trim())),
+          ];
           if (unique.length === 1) return unique[0];
         }
-      
+
         const codes = new Set();
         collectExplicitUserCodes(initialData, codes, new Set());
         return codes.size === 1 ? [...codes][0] : "";
       }
-      
+
       function extractUserCodeFromScriptTexts(scriptTexts) {
         const codes = new Set();
         const patterns = [
           /["']userCode["']\s*[:,]\s*["']([^"']+)["']/g,
           /["']user_code["']\s*[:,]\s*["']([^"']+)["']/g,
         ];
-      
+
         for (const text of scriptTexts ?? []) {
           if (typeof text !== "string") continue;
           for (const pattern of patterns) {
@@ -763,19 +865,19 @@
             }
           }
         }
-      
+
         return codes.size === 1 ? [...codes][0] : "";
       }
-      
+
       module.exports = {
         extractUserCodeFromMeResponse,
         extractUserCodeFromInitialData,
         extractUserCodeFromScriptTexts,
       };
     },
-    "core/ratings": function(module, exports, require) {
+    "core/ratings": function (module, exports, require) {
       "use strict";
-      
+
       function parseRatingsPage(json) {
         if (Array.isArray(json?.result?.result)) {
           return {
@@ -783,17 +885,17 @@
             next: json.result.next_uri ?? json.result.nextUri ?? null,
           };
         }
-      
+
         if (Array.isArray(json?.result)) {
           return {
             items: json.result,
             next: json.next_uri ?? json.nextUri ?? null,
           };
         }
-      
+
         throw new Error("평가 목록 API 응답 구조를 인식하지 못했습니다.");
       }
-      
+
       function normalizeRating(item, type) {
         const action = item.user_content_action ?? item.userContentAction ?? {};
         const content = item.content ?? {};
@@ -805,13 +907,13 @@
           item.content_code ??
           item.contentCode ??
           "";
-      
+
         if (!contentCode) {
           throw new Error(
             `content_code가 없는 평가 항목을 발견했습니다: ${content.title ?? "unknown"}`,
           );
         }
-      
+
         return {
           type,
           title: content.title ?? "",
@@ -822,25 +924,29 @@
           content_code: contentCode,
         };
       }
-      
+
       function ratingsUrl(userCode, contentType) {
         return `/api/users/${encodeURIComponent(userCode)}/contents/${contentType}/ratings`;
       }
-      
+
       function mergeWithExisting(currentRows, oldRows) {
-        const oldByCode = new Map(oldRows.map((row) => [row.content_code, row]));
-        const currentCodes = new Set(currentRows.map((row) => row.content_code));
+        const oldByCode = new Map(
+          oldRows.map((row) => [row.content_code, row]),
+        );
+        const currentCodes = new Set(
+          currentRows.map((row) => row.content_code),
+        );
         let added = 0;
         let changed = 0;
         let reused = 0;
-      
+
         for (const row of currentRows) {
           const old = oldByCode.get(row.content_code);
           if (!old) {
             added += 1;
             continue;
           }
-      
+
           if (
             String(old.rating ?? "") !== String(row.rating ?? "") ||
             String(old.title ?? "") !== String(row.title ?? "") ||
@@ -849,19 +955,19 @@
           ) {
             changed += 1;
           }
-      
+
           row.genres = old.genres ?? "";
           row.countries = old.countries ?? "";
           reused += 1;
         }
-      
+
         const removed = oldRows.filter(
           (row) => !currentCodes.has(row.content_code),
         ).length;
-      
+
         return { rows: currentRows, added, changed, removed, reused };
       }
-      
+
       module.exports = {
         parseRatingsPage,
         normalizeRating,
@@ -869,9 +975,9 @@
         mergeWithExisting,
       };
     },
-    "main": function(module, exports, require) {
+    main: function (module, exports, require) {
       "use strict";
-      
+
       const config = require("./config");
       const { createCheckpointStorage } = require("./browser/storage");
       const { createWatchaClient } = require("./browser/watchapedia");
@@ -879,10 +985,10 @@
       const files = require("./browser/files");
       const { createUi } = require("./ui");
       const { createWorkflow } = require("./workflow");
-      
+
       function main(env = globalThis) {
         if (env.document.querySelector("#wpe-launcher")) return;
-      
+
         const ui = createUi(env.document);
         const storage = createCheckpointStorage(config, env);
         const client = createWatchaClient({ config, ui, env });
@@ -898,19 +1004,19 @@
         ui.setActionHandler((action) => workflow.run(action));
         workflow.refreshCheckpointUi();
       }
-      
+
       main();
-      
+
       module.exports = { main };
     },
-    "ui": function(module, exports, require) {
+    ui: function (module, exports, require) {
       "use strict";
-      
+
       function createUi(documentRef = document) {
         if (documentRef.querySelector("#wpe-launcher")) {
           throw new Error("WatchaPedia Exporter UI가 이미 초기화되었습니다.");
         }
-      
+
         const style = documentRef.createElement("style");
         style.textContent = `
           #wpe-launcher {
@@ -947,12 +1053,12 @@
           #wpe-note { margin-top: 10px !important; color: #888; font-size: 11px; }
         `;
         documentRef.head.appendChild(style);
-      
+
         const launcher = documentRef.createElement("button");
         launcher.id = "wpe-launcher";
         launcher.type = "button";
         launcher.textContent = "WP Export";
-      
+
         const panel = documentRef.createElement("section");
         panel.id = "wpe-panel";
         panel.hidden = true;
@@ -968,43 +1074,54 @@
           <div id="wpe-summary"></div>
           <p id="wpe-note">상세 장르·국가 정보는 순차적으로 조회합니다.</p>
         `;
-      
+
         let actionHandler = () => {};
         launcher.addEventListener("click", () => {
           panel.hidden = !panel.hidden;
         });
-        panel.querySelector("#wpe-initial").addEventListener("click", () => actionHandler("initial"));
-        panel.querySelector("#wpe-update").addEventListener("click", () => actionHandler("update"));
-        panel.querySelector("#wpe-resume").addEventListener("click", () => actionHandler("resume"));
+        panel
+          .querySelector("#wpe-initial")
+          .addEventListener("click", () => actionHandler("initial"));
+        panel
+          .querySelector("#wpe-update")
+          .addEventListener("click", () => actionHandler("update"));
+        panel
+          .querySelector("#wpe-resume")
+          .addEventListener("click", () => actionHandler("resume"));
         documentRef.body.append(panel, launcher);
-      
+
         function setActionHandler(handler) {
           actionHandler = handler;
         }
-      
+
         function setButtonsDisabled(disabled) {
-          documentRef.querySelectorAll("#wpe-actions button").forEach((button) => {
-            button.disabled = disabled;
-          });
+          documentRef
+            .querySelectorAll("#wpe-actions button")
+            .forEach((button) => {
+              button.disabled = disabled;
+            });
         }
-      
+
         function setStatus(message) {
           const element = documentRef.querySelector("#wpe-status");
           if (element) element.textContent = message;
         }
-      
+
         function setSummary(message) {
           const element = documentRef.querySelector("#wpe-summary");
           if (element) element.textContent = message;
         }
-      
-        function setResumeButton({ visible, text = "중단된 작업 이어서 진행" }) {
+
+        function setResumeButton({
+          visible,
+          text = "중단된 작업 이어서 진행",
+        }) {
           const button = documentRef.querySelector("#wpe-resume");
           if (!button) return;
           button.hidden = !visible;
           button.textContent = text;
         }
-      
+
         return {
           setActionHandler,
           setButtonsDisabled,
@@ -1013,12 +1130,12 @@
           setResumeButton,
         };
       }
-      
+
       module.exports = { createUi };
     },
-    "workflow": function(module, exports, require) {
+    workflow: function (module, exports, require) {
       "use strict";
-      
+
       const { parseCsv } = require("./core/csv");
       const {
         parseRatingsPage,
@@ -1027,11 +1144,23 @@
         mergeWithExisting,
       } = require("./core/ratings");
       const { validateCheckpointRun } = require("./core/checkpoint");
-      
-      function createWorkflow({ config, client, storage, metadata, files, ui, env = globalThis }) {
+
+      function createWorkflow({
+        config,
+        client,
+        storage,
+        metadata,
+        files,
+        ui,
+        env = globalThis,
+      }) {
         let running = false;
-      
-        async function createCheckpointRun(mode, oldRows = [], sourceFileName = "") {
+
+        async function createCheckpointRun(
+          mode,
+          oldRows = [],
+          sourceFileName = "",
+        ) {
           const userCode = await client.getCurrentUserCode();
           const now = new Date().toISOString();
           const run = {
@@ -1058,11 +1187,11 @@
           await refreshCheckpointUi();
           return run;
         }
-      
+
         async function collectRatingsWithCheckpoint(run) {
           while (run.phase === "ratings") {
             const ratingsState = run.ratings_state;
-      
+
             if (!ratingsState.next) {
               if (ratingsState.stage === "movies") {
                 ratingsState.stage = "tv_seasons";
@@ -1070,10 +1199,13 @@
                 await storage.saveRun(run);
                 continue;
               }
-      
+
               run.phase = "details";
               if (run.mode === "update") {
-                const merged = mergeWithExisting(run.current_rows, run.old_rows ?? []);
+                const merged = mergeWithExisting(
+                  run.current_rows,
+                  run.old_rows ?? [],
+                );
                 run.current_rows = merged.rows;
                 run.merge_stats = {
                   old: run.old_rows?.length ?? 0,
@@ -1088,7 +1220,7 @@
               await storage.saveRun(run);
               break;
             }
-      
+
             const isMovie = ratingsState.stage === "movies";
             const type = isMovie ? "movie" : "series";
             ui.setStatus(
@@ -1096,9 +1228,13 @@
                 isMovie ? ratingsState.movies : ratingsState.series
               }개`,
             );
-      
-            const parsed = parseRatingsPage(await client.requestJson(ratingsState.next));
-            const normalized = parsed.items.map((item) => normalizeRating(item, type));
+
+            const parsed = parseRatingsPage(
+              await client.requestJson(ratingsState.next),
+            );
+            const normalized = parsed.items.map((item) =>
+              normalizeRating(item, type),
+            );
             run.current_rows.push(...normalized);
             if (isMovie) ratingsState.movies += normalized.length;
             else ratingsState.series += normalized.length;
@@ -1107,7 +1243,7 @@
           }
           return run;
         }
-      
+
         async function confirmReplaceCheckpoint() {
           const checkpoint = await storage.loadRun();
           if (!checkpoint) return true;
@@ -1119,37 +1255,46 @@
           await refreshCheckpointUi();
           return true;
         }
-      
+
         function formatRunSummary(run, metadataWarnings = 0) {
-          const warning = metadataWarnings ? ` · 메타데이터 누락 ${metadataWarnings}` : "";
+          const warning = metadataWarnings
+            ? ` · 메타데이터 누락 ${metadataWarnings}`
+            : "";
           if (run.mode === "update") {
             const stats = run.merge_stats ?? {};
             return `업데이트 완료 · 총 ${run.current_rows.length} · 신규 ${stats.added ?? 0} · 변경 ${stats.changed ?? 0} · 삭제 ${stats.removed ?? 0}${warning}`;
           }
           return `새 백업 완료 · 영화 ${run.ratings_state.movies} · 시리즈 ${run.ratings_state.series} · 총 ${run.current_rows.length}${warning}`;
         }
-      
+
         async function executeCheckpointRun(run) {
-          const validation = validateCheckpointRun(run, config.CHECKPOINT_SCHEMA_VERSION);
+          const validation = validateCheckpointRun(
+            run,
+            config.CHECKPOINT_SCHEMA_VERSION,
+          );
           if (!validation.ok) throw new Error(validation.reason);
-      
-          if (run.phase === "ratings") run = await collectRatingsWithCheckpoint(run);
-      
+
+          if (run.phase === "ratings")
+            run = await collectRatingsWithCheckpoint(run);
+
           const hydrated = await storage.hydrateRows(run);
           const rows = hydrated.rows;
           run.current_rows = rows;
-      
+
           if (run.mode === "update" && run.merge_stats) {
             const stats = run.merge_stats;
             const detailTargets = rows.filter((row) => {
               if (row.genres && row.countries) return false;
-              return hydrated.progressByCode.get(row.content_code)?.status !== "complete";
+              return (
+                hydrated.progressByCode.get(row.content_code)?.status !==
+                "complete"
+              );
             }).length;
             ui.setSummary(
               `업데이트 비교 · 기존 ${stats.old} · 현재 ${stats.current} · 신규 ${stats.added} · 변경 ${stats.changed} · 삭제 ${stats.removed} · 상세조회 ${detailTargets}`,
             );
           }
-      
+
           const result = await metadata.enrichRows({
             rows,
             client,
@@ -1162,10 +1307,13 @@
           run.detail_failures = result.failedRows.map((item) => ({
             content_code: item.content_code,
             title: item.title,
-            message: item.error instanceof Error ? item.error.message : String(item.error),
+            message:
+              item.error instanceof Error
+                ? item.error.message
+                : String(item.error),
           }));
           await storage.saveRun(run);
-      
+
           if (result.failedRows.length) {
             ui.setStatus("일부 상세 정보 수집에 실패했습니다.");
             ui.setSummary(
@@ -1173,9 +1321,11 @@
             );
             return false;
           }
-      
+
           files.downloadCsv(rows, config.CSV_COLUMNS, env);
-          const metadataWarnings = rows.filter((row) => !row.genres || !row.countries).length;
+          const metadataWarnings = rows.filter(
+            (row) => !row.genres || !row.countries,
+          ).length;
           const summary = formatRunSummary(run, metadataWarnings);
           await storage.clear();
           await refreshCheckpointUi();
@@ -1183,22 +1333,24 @@
           ui.setSummary(summary);
           return true;
         }
-      
+
         async function runInitialBackup() {
           if (!(await confirmReplaceCheckpoint())) return;
           await executeCheckpointRun(await createCheckpointRun("initial"));
         }
-      
+
         async function runUpdateBackup() {
           ui.setStatus("기존 WatchaPedia CSV를 선택해 주세요.");
           const file = await files.selectCsvFile(env.document);
           const oldRows = parseCsv(await file.text());
           if (!(await confirmReplaceCheckpoint())) return;
           const run = await createCheckpointRun("update", oldRows, file.name);
-          ui.setStatus(`기존 백업 ${oldRows.length}개 확인 · 현재 평가를 조회합니다.`);
+          ui.setStatus(
+            `기존 백업 ${oldRows.length}개 확인 · 현재 평가를 조회합니다.`,
+          );
           await executeCheckpointRun(run);
         }
-      
+
         async function runResumeBackup() {
           const run = await storage.loadRun();
           if (!run) {
@@ -1206,25 +1358,30 @@
             await refreshCheckpointUi();
             return;
           }
-      
-          const validation = validateCheckpointRun(run, config.CHECKPOINT_SCHEMA_VERSION);
+
+          const validation = validateCheckpointRun(
+            run,
+            config.CHECKPOINT_SCHEMA_VERSION,
+          );
           if (!validation.ok) {
-            throw new Error(`${validation.reason} 새 작업을 시작하면 기존 임시 데이터를 삭제할 수 있습니다.`);
+            throw new Error(
+              `${validation.reason} 새 작업을 시작하면 기존 임시 데이터를 삭제할 수 있습니다.`,
+            );
           }
-      
+
           const currentUserCode = await client.getCurrentUserCode();
           if (currentUserCode !== run.user_code) {
             throw new Error(
               "임시 저장된 작업과 현재 로그인 계정이 다릅니다. 기존 작업을 이어갈 수 없습니다.",
             );
           }
-      
+
           ui.setStatus(
             `중단된 ${run.mode === "update" ? "업데이트" : "새 백업"} 작업을 이어서 진행합니다.`,
           );
           await executeCheckpointRun(run);
         }
-      
+
         async function refreshCheckpointUi() {
           try {
             const checkpoint = await storage.loadRun();
@@ -1232,21 +1389,36 @@
               ui.setResumeButton({ visible: false });
               return;
             }
-            const validation = validateCheckpointRun(checkpoint, config.CHECKPOINT_SCHEMA_VERSION);
+            const validation = validateCheckpointRun(
+              checkpoint,
+              config.CHECKPOINT_SCHEMA_VERSION,
+            );
             if (!validation.ok) {
               ui.setResumeButton({ visible: false });
-              if (!running) ui.setStatus(`호환되지 않는 중단 작업 있음 · ${validation.reason}`);
+              if (!running)
+                ui.setStatus(
+                  `호환되지 않는 중단 작업 있음 · ${validation.reason}`,
+                );
               return;
             }
             const kind = checkpoint.mode === "update" ? "업데이트" : "새 백업";
-            const phase = checkpoint.phase === "ratings" ? "평가 목록 수집" : "상세 정보 수집";
-            ui.setResumeButton({ visible: true, text: `중단된 ${kind} 이어서 진행` });
+            const phase =
+              checkpoint.phase === "ratings"
+                ? "평가 목록 수집"
+                : "상세 정보 수집";
+            ui.setResumeButton({
+              visible: true,
+              text: `중단된 ${kind} 이어서 진행`,
+            });
             if (!running) ui.setStatus(`중단된 작업 있음 · ${phase} 단계`);
           } catch (error) {
-            console.error("[WatchaPedia Exporter] checkpoint lookup failed", error);
+            console.error(
+              "[WatchaPedia Exporter] checkpoint lookup failed",
+              error,
+            );
           }
         }
-      
+
         async function run(action) {
           if (running) return;
           running = true;
@@ -1258,19 +1430,21 @@
             else await runResumeBackup();
           } catch (error) {
             console.error("[WatchaPedia Exporter]", error);
-            ui.setSummary(`실패 · ${error instanceof Error ? error.message : String(error)}`);
+            ui.setSummary(
+              `실패 · ${error instanceof Error ? error.message : String(error)}`,
+            );
           } finally {
             running = false;
             ui.setButtonsDisabled(false);
             await refreshCheckpointUi();
           }
         }
-      
+
         return { run, refreshCheckpointUi };
       }
-      
+
       module.exports = { createWorkflow };
-    }
+    },
   };
   const __cache = Object.create(null);
 
@@ -1291,7 +1465,9 @@
     if (!factory) throw new Error(`Unknown module: ${id}`);
     const module = { exports: {} };
     __cache[id] = module;
-    factory(module, module.exports, (request) => __require(__resolve(id, request)));
+    factory(module, module.exports, (request) =>
+      __require(__resolve(id, request)),
+    );
     return module.exports;
   }
 

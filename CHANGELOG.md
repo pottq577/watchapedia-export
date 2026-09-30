@@ -2,6 +2,19 @@
 
 이 프로젝트는 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/) 형식을 참고합니다.
 
+## [0.4.0] - 2026-10-01
+
+### 추가
+
+- 서비스 정책, 계정 제한 가능성, 지원하지 않는 사용 범위, 라이선스 범위를 정리한 `docs/USAGE_POLICY.md`
+
+### 변경
+
+- 소스 코드 라이선스를 MIT License에서 PolyForm Noncommercial License 1.0.0으로 변경
+- `package.json`과 userscript 메타데이터의 버전 및 라이선스 식별자를 `0.4.0` 기준으로 갱신
+- README의 법적·정책 관련 설명을 핵심 안내와 별도 정책 문서 링크 중심으로 축약
+- `0.3.0` 이하 공개본에는 당시 MIT License 조건이 계속 적용됨을 문서화
+
 ## [0.3.0] - 2026-09-30
 
 ### 추가
