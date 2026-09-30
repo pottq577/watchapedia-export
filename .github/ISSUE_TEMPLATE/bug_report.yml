@@ -1,0 +1,89 @@
+name: 버그 제보
+description: userscript 실행 오류, CSV 생성 실패, 업데이트 문제 등을 제보합니다.
+title: "[Bug] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        제보해 주셔서 감사합니다. 재현에 필요한 정보만 작성해 주세요.
+        세션 쿠키, 인증 토큰, 비밀번호 등 민감정보는 첨부하지 마세요.
+
+  - type: input
+    id: script-version
+    attributes:
+      label: userscript 버전
+      description: watchapedia-exporter.user.js 상단의 @version 값을 입력해 주세요.
+      placeholder: "0.2.0"
+    validations:
+      required: true
+
+  - type: input
+    id: browser
+    attributes:
+      label: 브라우저 및 버전
+      placeholder: "Chrome 154"
+    validations:
+      required: true
+
+  - type: input
+    id: tampermonkey
+    attributes:
+      label: Tampermonkey 버전
+      description: DevTools Console에서 직접 실행했다면 "미사용"이라고 작성해 주세요.
+      placeholder: "5.x 또는 미사용"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: action
+    attributes:
+      label: 문제가 발생한 작업
+      options:
+        - 새 백업 만들기
+        - 기존 백업 업데이트
+        - 중단된 작업 이어서 진행
+        - 설치 또는 UI 표시
+        - 기타
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: 재현 절차
+      description: 문제가 발생하기까지의 순서를 작성해 주세요.
+      placeholder: |
+        1. WP Export 클릭
+        2. 새 백업 만들기 클릭
+        3. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 기대한 동작
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: 실제 동작
+    validations:
+      required: true
+
+  - type: textarea
+    id: console
+    attributes:
+      label: Console 오류 메시지
+      description: 가능하면 관련 오류만 붙여넣고 쿠키, 토큰, 개인 식별 정보는 제거해 주세요.
+      render: shell
+
+  - type: checkboxes
+    id: sensitive-data
+    attributes:
+      label: 민감정보 확인
+      options:
+        - label: 첨부 내용에 세션 쿠키, 인증 토큰, 비밀번호 등 민감정보가 포함되지 않았음을 확인했습니다.
+          required: true

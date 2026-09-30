@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WatchaPedia Ratings Exporter
 // @namespace    watchapedia-ratings-exporter
-// @version      0.1.1
+// @version      0.2.0
 // @description  왓챠피디아 영화·시리즈 평가를 CSV로 백업하고 기존 백업을 증분 갱신합니다.
 // @match        https://pedia.watcha.com/ko
 // @match        https://pedia.watcha.com/ko/*
@@ -19,6 +19,11 @@
     API_DELAY_MS: 300,
     DETAIL_DELAY_MS: 800,
     RETRY_LIMIT: 5,
+    CHECKPOINT_DB_NAME: "watchapedia-exporter",
+    CHECKPOINT_DB_VERSION: 1,
+    CHECKPOINT_RUN_STORE: "runs",
+    CHECKPOINT_PROGRESS_STORE: "progress",
+    CHECKPOINT_ID: "active",
     CSV_COLUMNS: [
       "type",
       "title",
@@ -34,9 +39,179 @@
     running: false,
     deviceId: "",
     headers: null,
+    checkpoint: null,
   };
 
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  function openCheckpointDb() {
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open(
+        CONFIG.CHECKPOINT_DB_NAME,
+        CONFIG.CHECKPOINT_DB_VERSION,
+      );
+
+      request.addEventListener("upgradeneeded", () => {
+        const db = request.result;
+        if (!db.objectStoreNames.contains(CONFIG.CHECKPOINT_RUN_STORE)) {
+          db.createObjectStore(CONFIG.CHECKPOINT_RUN_STORE, { keyPath: "id" });
+        }
+        if (!db.objectStoreNames.contains(CONFIG.CHECKPOINT_PROGRESS_STORE)) {
+          const store = db.createObjectStore(CONFIG.CHECKPOINT_PROGRESS_STORE, {
+            keyPath: ["run_id", "content_code"],
+          });
+          store.createIndex("run_id", "run_id", { unique: false });
+        }
+      });
+
+      request.addEventListener("success", () => resolve(request.result));
+      request.addEventListener("error", () =>
+        reject(request.error ?? new Error("IndexedDB를 열 수 없습니다.")),
+      );
+    });
+  }
+
+  function waitForTransaction(transaction) {
+    return new Promise((resolve, reject) => {
+      transaction.addEventListener("complete", () => resolve());
+      transaction.addEventListener("abort", () =>
+        reject(
+          transaction.error ?? new Error("IndexedDB 작업이 중단되었습니다."),
+        ),
+      );
+      transaction.addEventListener("error", () =>
+        reject(
+          transaction.error ?? new Error("IndexedDB 작업에 실패했습니다."),
+        ),
+      );
+    });
+  }
+
+  function requestValue(request) {
+    return new Promise((resolve, reject) => {
+      request.addEventListener("success", () => resolve(request.result));
+      request.addEventListener("error", () =>
+        reject(request.error ?? new Error("IndexedDB 요청에 실패했습니다.")),
+      );
+    });
+  }
+
+  async function loadCheckpointRun() {
+    const db = await openCheckpointDb();
+    try {
+      const transaction = db.transaction(
+        CONFIG.CHECKPOINT_RUN_STORE,
+        "readonly",
+      );
+      const request = transaction
+        .objectStore(CONFIG.CHECKPOINT_RUN_STORE)
+        .get(CONFIG.CHECKPOINT_ID);
+      return (await requestValue(request)) ?? null;
+    } finally {
+      db.close();
+    }
+  }
+
+  async function saveCheckpointRun(run) {
+    const db = await openCheckpointDb();
+    try {
+      const transaction = db.transaction(
+        CONFIG.CHECKPOINT_RUN_STORE,
+        "readwrite",
+      );
+      run.updated_at = new Date().toISOString();
+      transaction.objectStore(CONFIG.CHECKPOINT_RUN_STORE).put(run);
+      await waitForTransaction(transaction);
+      state.checkpoint = run;
+    } finally {
+      db.close();
+    }
+  }
+
+  async function saveCheckpointProgress(row) {
+    const db = await openCheckpointDb();
+    try {
+      const transaction = db.transaction(
+        CONFIG.CHECKPOINT_PROGRESS_STORE,
+        "readwrite",
+      );
+      transaction.objectStore(CONFIG.CHECKPOINT_PROGRESS_STORE).put({
+        run_id: CONFIG.CHECKPOINT_ID,
+        content_code: row.content_code,
+        genres: row.genres ?? "",
+        countries: row.countries ?? "",
+        updated_at: new Date().toISOString(),
+      });
+      await waitForTransaction(transaction);
+    } finally {
+      db.close();
+    }
+  }
+
+  async function loadCheckpointProgress() {
+    const db = await openCheckpointDb();
+    try {
+      const transaction = db.transaction(
+        CONFIG.CHECKPOINT_PROGRESS_STORE,
+        "readonly",
+      );
+      const request = transaction
+        .objectStore(CONFIG.CHECKPOINT_PROGRESS_STORE)
+        .index("run_id")
+        .getAll(CONFIG.CHECKPOINT_ID);
+      return (await requestValue(request)) ?? [];
+    } finally {
+      db.close();
+    }
+  }
+
+  async function clearCheckpoint() {
+    const db = await openCheckpointDb();
+    try {
+      const transaction = db.transaction(
+        [CONFIG.CHECKPOINT_RUN_STORE, CONFIG.CHECKPOINT_PROGRESS_STORE],
+        "readwrite",
+      );
+      transaction
+        .objectStore(CONFIG.CHECKPOINT_RUN_STORE)
+        .delete(CONFIG.CHECKPOINT_ID);
+
+      const progressIndex = transaction
+        .objectStore(CONFIG.CHECKPOINT_PROGRESS_STORE)
+        .index("run_id");
+      const cursorRequest = progressIndex.openCursor(
+        IDBKeyRange.only(CONFIG.CHECKPOINT_ID),
+      );
+      cursorRequest.addEventListener("success", () => {
+        const cursor = cursorRequest.result;
+        if (!cursor) return;
+        cursor.delete();
+        cursor.continue();
+      });
+
+      await waitForTransaction(transaction);
+      state.checkpoint = null;
+    } finally {
+      db.close();
+    }
+  }
+
+  async function hydrateCheckpointRows(run) {
+    const rows = (run.current_rows ?? []).map((row) => ({ ...row }));
+    const progress = await loadCheckpointProgress();
+    const progressByCode = new Map(
+      progress.map((item) => [item.content_code, item]),
+    );
+
+    for (const row of rows) {
+      const saved = progressByCode.get(row.content_code);
+      if (!saved) continue;
+      row.genres = saved.genres ?? row.genres ?? "";
+      row.countries = saved.countries ?? row.countries ?? "";
+    }
+
+    return rows;
+  }
 
   function getCookie(name) {
     return (
@@ -221,26 +396,95 @@
     };
   }
 
-  async function collectRatings(userCode, contentType, type) {
-    let next = `/api/users/${encodeURIComponent(userCode)}/contents/${contentType}/ratings`;
-    const rows = [];
-    let page = 1;
+  function ratingsUrl(userCode, contentType) {
+    return `/api/users/${encodeURIComponent(userCode)}/contents/${contentType}/ratings`;
+  }
 
-    while (next) {
+  async function createCheckpointRun(mode, oldRows = [], sourceFileName = "") {
+    const userCode = await getCurrentUserCode();
+    const now = new Date().toISOString();
+    const run = {
+      id: CONFIG.CHECKPOINT_ID,
+      schema_version: 1,
+      mode,
+      phase: "ratings",
+      user_code: userCode,
+      source_file_name: sourceFileName,
+      created_at: now,
+      updated_at: now,
+      old_rows: mode === "update" ? oldRows : [],
+      current_rows: [],
+      ratings_state: {
+        stage: "movies",
+        next: ratingsUrl(userCode, "movies"),
+        movies: 0,
+        series: 0,
+      },
+      merge_stats: null,
+    };
+
+    await saveCheckpointRun(run);
+    await refreshCheckpointUi();
+    return run;
+  }
+
+  async function collectRatingsWithCheckpoint(run) {
+    while (run.phase === "ratings") {
+      const ratingsState = run.ratings_state;
+
+      if (!ratingsState.next) {
+        if (ratingsState.stage === "movies") {
+          ratingsState.stage = "tv_seasons";
+          ratingsState.next = ratingsUrl(run.user_code, "tv_seasons");
+          await saveCheckpointRun(run);
+          continue;
+        }
+
+        run.phase = "details";
+        if (run.mode === "update") {
+          const merged = mergeWithExisting(
+            run.current_rows,
+            run.old_rows ?? [],
+          );
+          run.current_rows = merged.rows;
+          run.merge_stats = {
+            old: run.old_rows?.length ?? 0,
+            current: merged.rows.length,
+            added: merged.added,
+            changed: merged.changed,
+            removed: merged.removed,
+            reused: merged.reused,
+          };
+          run.old_rows = [];
+        }
+        await saveCheckpointRun(run);
+        break;
+      }
+
+      const isMovie = ratingsState.stage === "movies";
+      const type = isMovie ? "movie" : "series";
       setStatus(
-        `${type === "movie" ? "영화" : "시리즈"} 평가 수집 중 · ${rows.length}개`,
+        `${isMovie ? "영화" : "시리즈"} 평가 수집 중 · ${
+          isMovie ? ratingsState.movies : ratingsState.series
+        }개`,
       );
-      const json = await requestJson(next);
+
+      const json = await requestJson(ratingsState.next);
       const parsed = parseRatingsPage(json);
-      rows.push(...parsed.items.map((item) => normalizeRating(item, type)));
-      next = parsed.next;
-      page += 1;
+      const normalized = parsed.items.map((item) =>
+        normalizeRating(item, type),
+      );
+      run.current_rows.push(...normalized);
+      if (isMovie) {
+        ratingsState.movies += normalized.length;
+      } else {
+        ratingsState.series += normalized.length;
+      }
+      ratingsState.next = parsed.next;
+      await saveCheckpointRun(run);
     }
 
-    console.info(
-      `[WatchaPedia Exporter] ${type}: ${rows.length} items, ${page - 1} pages`,
-    );
-    return rows;
+    return run;
   }
 
   function normalizeText(value) {
@@ -383,7 +627,7 @@
     };
   }
 
-  async function enrichRows(rows) {
+  async function enrichRows(rows, persistProgress = false) {
     const targets = rows.filter((row) => !row.genres || !row.countries);
     let failed = 0;
 
@@ -396,6 +640,9 @@
       try {
         const html = await requestHtml(row.content_code);
         Object.assign(row, parseDetailMetadata(html, row));
+        if (persistProgress) {
+          await saveCheckpointProgress(row);
+        }
       } catch (error) {
         failed += 1;
         console.error(
@@ -569,26 +816,67 @@
     setTimeout(() => URL.revokeObjectURL(url), 1_000);
   }
 
-  async function collectCurrentRatings() {
-    const userCode = await getCurrentUserCode();
-    const movies = await collectRatings(userCode, "movies", "movie");
-    const series = await collectRatings(userCode, "tv_seasons", "series");
-    return {
-      movies,
-      series,
-      rows: [...movies, ...series],
-    };
+  async function confirmReplaceCheckpoint() {
+    const checkpoint = await loadCheckpointRun();
+    if (!checkpoint) return true;
+
+    const confirmed = window.confirm(
+      "중단된 수집 작업이 있습니다. 새 작업을 시작하면 기존 임시 저장 내용을 삭제합니다. 계속할까요?",
+    );
+    if (!confirmed) return false;
+
+    await clearCheckpoint();
+    await refreshCheckpointUi();
+    return true;
+  }
+
+  function formatRunSummary(run, failed) {
+    if (run.mode === "update") {
+      const stats = run.merge_stats ?? {};
+      return (
+        `업데이트 완료 · 총 ${run.current_rows.length} · 신규 ${stats.added ?? 0} · 변경 ${stats.changed ?? 0} · 삭제 ${stats.removed ?? 0}` +
+        (failed ? ` · 상세정보 실패 ${failed}` : "")
+      );
+    }
+
+    return (
+      `새 백업 완료 · 영화 ${run.ratings_state.movies} · 시리즈 ${run.ratings_state.series} · 총 ${run.current_rows.length}` +
+      (failed ? ` · 상세정보 실패 ${failed}` : "")
+    );
+  }
+
+  async function executeCheckpointRun(run) {
+    if (run.phase === "ratings") {
+      run = await collectRatingsWithCheckpoint(run);
+    }
+
+    const rows = await hydrateCheckpointRows(run);
+    run.current_rows = rows;
+
+    if (run.mode === "update" && run.merge_stats) {
+      const stats = run.merge_stats;
+      const detailTargets = rows.filter(
+        (row) => !row.genres || !row.countries,
+      ).length;
+      setSummary(
+        `업데이트 비교 · 기존 ${stats.old} · 현재 ${stats.current} · 신규 ${stats.added} · 변경 ${stats.changed} · 삭제 ${stats.removed} · 상세조회 ${detailTargets}`,
+      );
+    }
+
+    const failed = await enrichRows(rows, true);
+    run.current_rows = rows;
+    downloadCsv(rows);
+    const summary = formatRunSummary(run, failed);
+    await clearCheckpoint();
+    await refreshCheckpointUi();
+    setStatus("완료");
+    setSummary(summary);
   }
 
   async function runInitialBackup() {
-    const collected = await collectCurrentRatings();
-    const failed = await enrichRows(collected.rows);
-    downloadCsv(collected.rows);
-
-    setSummary(
-      `새 백업 완료 · 영화 ${collected.movies.length} · 시리즈 ${collected.series.length} · 총 ${collected.rows.length}` +
-        (failed ? ` · 상세정보 실패 ${failed}` : ""),
-    );
+    if (!(await confirmReplaceCheckpoint())) return;
+    const run = await createCheckpointRun("initial");
+    await executeCheckpointRun(run);
   }
 
   async function runUpdateBackup() {
@@ -596,24 +884,31 @@
     const file = await selectCsvFile();
     const oldRows = parseCsv(await file.text());
 
+    if (!(await confirmReplaceCheckpoint())) return;
+    const run = await createCheckpointRun("update", oldRows, file.name);
     setStatus(`기존 백업 ${oldRows.length}개 확인 · 현재 평가를 조회합니다.`);
-    const collected = await collectCurrentRatings();
-    const merged = mergeWithExisting(collected.rows, oldRows);
-    const detailTargets = merged.rows.filter(
-      (row) => !row.genres || !row.countries,
-    ).length;
+    await executeCheckpointRun(run);
+  }
 
-    setSummary(
-      `업데이트 비교 · 기존 ${oldRows.length} · 현재 ${merged.rows.length} · 신규 ${merged.added} · 변경 ${merged.changed} · 삭제 ${merged.removed} · 상세조회 ${detailTargets}`,
+  async function runResumeBackup() {
+    const run = await loadCheckpointRun();
+    if (!run) {
+      setSummary("이어갈 중단 작업이 없습니다.");
+      await refreshCheckpointUi();
+      return;
+    }
+
+    const currentUserCode = await getCurrentUserCode();
+    if (currentUserCode !== run.user_code) {
+      throw new Error(
+        "임시 저장된 작업과 현재 로그인 계정이 다릅니다. 기존 작업을 이어갈 수 없습니다.",
+      );
+    }
+
+    setStatus(
+      `중단된 ${run.mode === "update" ? "업데이트" : "새 백업"} 작업을 이어서 진행합니다.`,
     );
-
-    const failed = await enrichRows(merged.rows);
-    downloadCsv(merged.rows);
-
-    setSummary(
-      `업데이트 완료 · 총 ${merged.rows.length} · 신규 ${merged.added} · 변경 ${merged.changed} · 삭제 ${merged.removed}` +
-        (failed ? ` · 상세정보 실패 ${failed}` : ""),
-    );
+    await executeCheckpointRun(run);
   }
 
   async function run(action) {
@@ -633,8 +928,10 @@
     try {
       if (action === "initial") {
         await runInitialBackup();
-      } else {
+      } else if (action === "update") {
         await runUpdateBackup();
+      } else {
+        await runResumeBackup();
       }
     } catch (error) {
       console.error("[WatchaPedia Exporter]", error);
@@ -644,6 +941,28 @@
     } finally {
       state.running = false;
       setButtonsDisabled(false);
+      await refreshCheckpointUi();
+    }
+  }
+
+  async function refreshCheckpointUi() {
+    const resumeButton = document.querySelector("#wpe-resume");
+    if (!resumeButton) return;
+
+    try {
+      const checkpoint = await loadCheckpointRun();
+      state.checkpoint = checkpoint;
+      resumeButton.hidden = !checkpoint;
+
+      if (checkpoint && !state.running) {
+        const kind = checkpoint.mode === "update" ? "업데이트" : "새 백업";
+        const phase =
+          checkpoint.phase === "ratings" ? "평가 목록 수집" : "상세 정보 수집";
+        resumeButton.textContent = `중단된 ${kind} 이어서 진행`;
+        setStatus(`중단된 작업 있음 · ${phase} 단계`);
+      }
+    } catch (error) {
+      console.error("[WatchaPedia Exporter] checkpoint lookup failed", error);
     }
   }
 
@@ -693,6 +1012,8 @@
         cursor: pointer;
       }
       #wpe-actions button:disabled { opacity: .45; cursor: default; }
+      #wpe-resume { grid-column: 1 / -1; background: #ff0558 !important; }
+      #wpe-resume[hidden] { display: none; }
       #wpe-status, #wpe-summary {
         margin-top: 12px;
         padding-top: 10px;
@@ -726,6 +1047,7 @@
       <div id="wpe-actions">
         <button id="wpe-initial" type="button">새 백업 만들기</button>
         <button id="wpe-update" type="button">기존 백업 업데이트</button>
+        <button id="wpe-resume" type="button" hidden>중단된 작업 이어서 진행</button>
       </div>
       <div id="wpe-status">대기 중</div>
       <div id="wpe-summary"></div>
@@ -741,6 +1063,9 @@
     panel
       .querySelector("#wpe-update")
       .addEventListener("click", () => run("update"));
+    panel
+      .querySelector("#wpe-resume")
+      .addEventListener("click", () => run("resume"));
 
     document.body.append(panel, launcher);
   }
@@ -762,4 +1087,5 @@
   }
 
   createUi();
+  refreshCheckpointUi();
 })();

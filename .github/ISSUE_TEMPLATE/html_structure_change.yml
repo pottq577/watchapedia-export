@@ -1,0 +1,64 @@
+name: HTML 구조 변경 제보
+description: 장르·국가 누락 등 왓챠피디아 상세 페이지 구조 변경이 의심될 때 사용합니다.
+title: "[HTML] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        왓챠피디아 내부 HTML/API 구조는 예고 없이 변경될 수 있습니다.
+        로그인 상태의 전체 HTML 대신 재현 가능한 콘텐츠 URL과 필요한 최소 정보만 공유해 주세요.
+
+  - type: input
+    id: script-version
+    attributes:
+      label: userscript 버전
+      placeholder: "0.2.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: affected-field
+    attributes:
+      label: 영향을 받은 항목
+      multiple: true
+      options:
+        - 장르
+        - 국가
+        - 제목/연도
+        - 평점 목록
+        - 사용자 식별
+        - 기타
+    validations:
+      required: true
+
+  - type: input
+    id: content-url
+    attributes:
+      label: 문제가 발생한 콘텐츠 URL
+      description: 공개 가능한 왓챠피디아 콘텐츠 URL을 입력해 주세요.
+      placeholder: "https://pedia.watcha.com/ko/contents/..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: symptom
+    attributes:
+      label: 증상
+      description: CSV에 어떤 값이 비거나 잘못 들어가는지 설명해 주세요.
+    validations:
+      required: true
+
+  - type: textarea
+    id: relevant-html
+    attributes:
+      label: 관련 HTML 또는 Console 정보
+      description: 필요한 최소 구간만 첨부하고 사용자 코드, 쿠키, 토큰 등 민감정보는 제거해 주세요.
+      render: html
+
+  - type: checkboxes
+    id: sensitive-data
+    attributes:
+      label: 민감정보 확인
+      options:
+        - label: 로그인 상태의 전체 HTML, 세션 쿠키, 인증 토큰 등 민감정보를 첨부하지 않았음을 확인했습니다.
+          required: true
