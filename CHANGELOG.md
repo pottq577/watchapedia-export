@@ -2,6 +2,17 @@
 
 이 프로젝트는 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/) 형식을 참고합니다.
 
+## [0.1.1] - 2026-09-30
+
+### 추가
+
+- Tampermonkey의 자동 업데이트 메타데이터 추가
+
+### 수정
+
+- 왓챠피디아 기본 주소 `https://pedia.watcha.com/ko`가 userscript 실행 대상에 포함되도록 URL 매칭 수정
+- Tampermonkey의 사용자 스크립트 실행 설정 안내 보강
+
 ## [0.1.0] - 2026-09-30
 
 ### 추가
