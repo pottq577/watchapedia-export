@@ -1,16 +1,22 @@
 # WatchaPedia Ratings Exporter
 
 [왓챠피디아](https://pedia.watcha.com/ko)에서 내가 평가한 **영화·시리즈 기록을 CSV로 백업하고, 이후 변경분만 반영해 갱신**하는 비공식 Tampermonkey userscript입니다.
+이 저장소는 브라우저가 Chrome 환경일 때 최적으로 동작합니다.
 
 ## 사용법
 
 ### 방법 1: Tampermonkey 활용
 
 1. 브라우저에 [Tampermonkey](https://www.tampermonkey.net/)를 설치합니다.
-2. 이 저장소의 `watchapedia-exporter.user.js` [Raw 파일](https://github.com/pottq577/watchapedia-export/raw/refs/heads/main/watchapedia-exporter.user.js)을 엽니다.
-3. Tampermonkey의 설치 화면에서 userscript를 설치합니다.
-4. `https://pedia.watcha.com/ko/`에 로그인한 상태로 접속합니다.
-5. 화면 오른쪽 아래의 **WP Export** 버튼을 누릅니다.
+2. 브라우저의 [확장 프로그램 관리 화면](chrome://extensions/)에서 Tampermonkey → 세부정보 → 사용자 스크립트 허용을 활성화합니다.
+   1. 이 옵션이 꺼져 있으면 `userscript`가 설치되어 있어도 왓챠피디아 페이지에서 실행되지 않을 수 있습니다.
+3. 이 저장소의 `watchapedia-exporter.user.js` [Raw 파일](https://github.com/pottq577/watchapedia-export/raw/refs/heads/main/watchapedia-exporter.user.js)을 엽니다.
+4. Tampermonkey의 설치 화면에서 userscript를 설치합니다.
+5. `https://pedia.watcha.com/ko/`에 로그인한 상태로 접속합니다.
+6. 화면 오른쪽 아래의 **WP Export** 버튼을 누릅니다.
+
+> `WP Export` 버튼이 보이지 않는 경우
+> 먼저 Tampermonkey 확장 프로그램의 **사용자 스크립트 허용** 옵션이 켜져 있는지 확인한 뒤 왓챠피디아 페이지를 새로고침하세요.
 
 ### 방법 2: 브라우저 개발자 도구(DevTools) Console에서 직접 실행
 
