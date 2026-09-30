@@ -8,7 +8,7 @@
 ### 방법 1: Tampermonkey 활용
 
 1. 브라우저에 [Tampermonkey](https://www.tampermonkey.net/)를 설치합니다.
-2. 브라우저의 [확장 프로그램 관리 화면](chrome://extensions/)에서 Tampermonkey → 세부정보 → 사용자 스크립트 허용을 활성화합니다.
+2. 브라우저의 확장 프로그램 관리 화면(`chrome://extensions/`)에서 Tampermonkey → 세부정보 → 사용자 스크립트 허용을 활성화합니다.
    1. 이 옵션이 꺼져 있으면 `userscript`가 설치되어 있어도 왓챠피디아 페이지에서 실행되지 않을 수 있습니다.
 3. 이 저장소의 `watchapedia-exporter.user.js` [Raw 파일](https://github.com/pottq577/watchapedia-export/raw/refs/heads/main/watchapedia-exporter.user.js)을 엽니다.
 4. Tampermonkey의 설치 화면에서 userscript를 설치합니다.
