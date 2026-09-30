@@ -1,16 +1,31 @@
 # WatchaPedia Ratings Exporter
 
-왓챠피디아에서 내가 평가한 **영화·시리즈 기록을 CSV로 백업하고, 이후 변경분만 반영해 갱신**하는 비공식 Tampermonkey userscript입니다.
+[왓챠피디아](https://pedia.watcha.com/ko)에서 내가 평가한 **영화·시리즈 기록을 CSV로 백업하고, 이후 변경분만 반영해 갱신**하는 비공식 Tampermonkey userscript입니다.
 
 ## 사용법
 
-### 설치
+### 방법 1: Tampermonkey 활용
 
 1. 브라우저에 [Tampermonkey](https://www.tampermonkey.net/)를 설치합니다.
-2. 이 저장소의 `watchapedia-exporter.user.js` Raw 파일을 엽니다.
+2. 이 저장소의 `watchapedia-exporter.user.js` [Raw 파일](https://github.com/pottq577/watchapedia-export/raw/refs/heads/main/watchapedia-exporter.user.js)을 엽니다.
 3. Tampermonkey의 설치 화면에서 userscript를 설치합니다.
 4. `https://pedia.watcha.com/ko/`에 로그인한 상태로 접속합니다.
 5. 화면 오른쪽 아래의 **WP Export** 버튼을 누릅니다.
+
+### 방법 2: 브라우저 개발자 도구(DevTools) Console에서 직접 실행
+
+1. `https://pedia.watcha.com/ko/`에 로그인한 상태로 접속합니다.
+2. 이 저장소의 `watchapedia-exporter.user.js` [Raw 파일](https://github.com/pottq577/watchapedia-export/raw/refs/heads/main/watchapedia-exporter.user.js)을 엽니다.
+3. 파일 전체 내용을 복사합니다.
+4. 왓챠피디아 페이지에서 브라우저 개발자 도구를 열고 **Console** 탭으로 이동합니다.
+   - Chrome / Edge: `F12` 또는 `Ctrl + Shift + J`
+   - macOS: `Cmd + Option + J`
+5. 복사한 코드를 Console에 붙여넣고 실행합니다.
+6. 화면 오른쪽 아래에 나타난 **WP Export** 버튼을 눌러 사용합니다.
+
+DevTools에서 실행한 경우 페이지를 새로고침하거나 다른 페이지로 이동하면 스크립트가 사라질 수 있으므로 다시 실행해야 합니다. 반복해서 사용할 경우에는 Tampermonkey 설치 방식을 권장합니다.
+
+> Chrome 등 일부 브라우저에서는 보안을 위해 Console에 코드를 처음 붙여넣을 때 붙여넣기가 차단될 수 있습니다. 이 경우 개발자 도구에 표시되는 안내에 따라 직접 붙여넣기를 허용한 후 다시 실행합니다.
 
 ### 최초 사용
 
