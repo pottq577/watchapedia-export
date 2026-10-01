@@ -41,6 +41,7 @@ function normalizeRating(item, type) {
     title: content.title ?? "",
     year: content.year ?? "",
     rating: typeof rawRating === "number" ? rawRating / 2 : "",
+    rated_at: action.rate_created_at ?? action.rateCreatedAt ?? "",
     genres: "",
     countries: "",
     content_code: contentCode,

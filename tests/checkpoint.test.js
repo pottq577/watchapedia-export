@@ -6,7 +6,7 @@ const { validateCheckpointRun } = require("../src/core/checkpoint");
 
 function run(overrides = {}) {
   return {
-    schema_version: 2,
+    schema_version: 3,
     mode: "initial",
     phase: "ratings",
     user_code: "u1",
@@ -17,17 +17,17 @@ function run(overrides = {}) {
 }
 
 test("accepts the current checkpoint schema", () => {
-  assert.equal(validateCheckpointRun(run(), 2).ok, true);
+  assert.equal(validateCheckpointRun(run(), 3).ok, true);
 });
 
 test("rejects an older checkpoint schema", () => {
-  const result = validateCheckpointRun(run({ schema_version: 1 }), 2);
+  const result = validateCheckpointRun(run({ schema_version: 2 }), 3);
   assert.equal(result.ok, false);
   assert.equal(result.code, "unsupported_schema");
 });
 
 test("rejects malformed checkpoint phases", () => {
-  const result = validateCheckpointRun(run({ phase: "unknown" }), 2);
+  const result = validateCheckpointRun(run({ phase: "unknown" }), 3);
   assert.equal(result.ok, false);
   assert.equal(result.code, "invalid_phase");
 });

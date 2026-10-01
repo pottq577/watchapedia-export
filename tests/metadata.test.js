@@ -2,11 +2,35 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { enrichRows } = require("../src/browser/metadata");
+const {
+  enrichRows,
+  extractCountriesFromJsonLd,
+  extractCountryFromMetadataText,
+} = require("../src/browser/metadata");
 
 function ui() {
   return { setStatus() {} };
 }
+
+test("extracts country from the compact content metadata line", () => {
+  assert.deepEqual(
+    extractCountryFromMetadataText(
+      "2022 · 로맨스/드라마/미스터리/범죄/스릴러 · 한국",
+      { year: 2022 },
+      ["로맨스", "드라마", "미스터리", "범죄", "스릴러"],
+    ),
+    ["한국"],
+  );
+});
+
+test("extracts multiple countries from JSON-LD country fields", () => {
+  assert.deepEqual(
+    extractCountriesFromJsonLd({
+      countryOfOrigin: [{ name: "미국" }, { name: "영국" }],
+    }),
+    ["미국", "영국"],
+  );
+});
 
 test("enrichRows keeps failed items retryable and records successful progress", async () => {
   const rows = [
@@ -41,28 +65,44 @@ test("enrichRows keeps failed items retryable and records successful progress", 
   assert.deepEqual(progress.map((item) => item.status), ["complete", "failed"]);
 });
 
-test("completed checkpoint progress skips a blank metadata row on resume", async () => {
-  const rows = [{ title: "A", genres: "", countries: "", content_code: "a" }];
+test("partial metadata remains retryable on resume", async () => {
+  const rows = [{ title: "A", genres: "공포", countries: "", content_code: "a" }];
   let requests = 0;
+  const statuses = [];
   const result = await enrichRows({
     rows,
-    client: { async requestHtml() { requests += 1; return "html"; } },
-    storage: { async saveProgress() {} },
-    progressByCode: new Map([["a", { status: "complete" }]]),
+    client: {
+      async requestHtml() {
+        requests += 1;
+        return "html";
+      },
+    },
+    storage: {
+      async saveProgress(row, status) {
+        statuses.push(status);
+      },
+    },
+    progressByCode: new Map([["a", { status: "partial" }]]),
     ui: ui(),
-    parseMetadata: () => ({ genres: "", countries: "" }),
+    parseMetadata: () => ({ genres: "공포", countries: "한국" }),
   });
 
-  assert.equal(requests, 0);
-  assert.equal(result.attempted, 0);
+  assert.equal(requests, 1);
+  assert.equal(result.attempted, 1);
+  assert.deepEqual(statuses, ["complete"]);
 });
 
-test("successful but incomplete metadata is a warning, not a retry failure", async () => {
+test("successful but incomplete metadata is stored as partial", async () => {
   const row = { title: "A", genres: "", countries: "", content_code: "a" };
+  const statuses = [];
   const result = await enrichRows({
     rows: [row],
     client: { async requestHtml() { return "html"; } },
-    storage: { async saveProgress() {} },
+    storage: {
+      async saveProgress(current, status) {
+        statuses.push(status);
+      },
+    },
     progressByCode: new Map(),
     ui: ui(),
     parseMetadata: () => ({ genres: "공포", countries: "" }),
@@ -70,4 +110,5 @@ test("successful but incomplete metadata is a warning, not a retry failure", asy
 
   assert.equal(result.failedRows.length, 0);
   assert.equal(result.metadataWarnings, 1);
+  assert.deepEqual(statuses, ["partial"]);
 });

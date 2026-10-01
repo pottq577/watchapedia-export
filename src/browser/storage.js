@@ -39,10 +39,14 @@ function createCheckpointStorage(config, env = globalThis) {
     return new Promise((resolve, reject) => {
       transaction.addEventListener("complete", () => resolve());
       transaction.addEventListener("abort", () =>
-        reject(transaction.error ?? new Error("IndexedDB 작업이 중단되었습니다.")),
+        reject(
+          transaction.error ?? new Error("IndexedDB 작업이 중단되었습니다."),
+        ),
       );
       transaction.addEventListener("error", () =>
-        reject(transaction.error ?? new Error("IndexedDB 작업에 실패했습니다.")),
+        reject(
+          transaction.error ?? new Error("IndexedDB 작업에 실패했습니다."),
+        ),
       );
     });
   }
@@ -59,7 +63,10 @@ function createCheckpointStorage(config, env = globalThis) {
   async function loadRun() {
     const db = await openDb();
     try {
-      const transaction = db.transaction(config.CHECKPOINT_RUN_STORE, "readonly");
+      const transaction = db.transaction(
+        config.CHECKPOINT_RUN_STORE,
+        "readonly",
+      );
       const request = transaction
         .objectStore(config.CHECKPOINT_RUN_STORE)
         .get(config.CHECKPOINT_ID);
@@ -72,7 +79,10 @@ function createCheckpointStorage(config, env = globalThis) {
   async function saveRun(run) {
     const db = await openDb();
     try {
-      const transaction = db.transaction(config.CHECKPOINT_RUN_STORE, "readwrite");
+      const transaction = db.transaction(
+        config.CHECKPOINT_RUN_STORE,
+        "readwrite",
+      );
       run.updated_at = new Date().toISOString();
       transaction.objectStore(config.CHECKPOINT_RUN_STORE).put(run);
       await waitForTransaction(transaction);
@@ -154,7 +164,7 @@ function createCheckpointStorage(config, env = globalThis) {
 
     for (const row of rows) {
       const saved = byCode.get(row.content_code);
-      if (!saved || saved.status !== "complete") continue;
+      if (!saved || !["complete", "partial"].includes(saved.status)) continue;
       row.genres = saved.genres ?? row.genres ?? "";
       row.countries = saved.countries ?? row.countries ?? "";
     }
